@@ -1,1 +1,0 @@
-Please Open & Run the HTML Live Simulation to get a full concept of the project concept!!!
