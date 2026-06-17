@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IDS Live SOC Simulation — W12-IDS-001</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #080d13;
+  --bg2:       #0d1520;
+  --bg3:       #111d2e;
+  --bg4:       #162236;
+  --border:    rgba(0,200,255,0.08);
+  --border2:   rgba(0,200,255,0.18);
+  --teal:      #00c8ff;
+  --teal2:     #0090cc;
+  --teal-dim:  rgba(0,200,255,0.12);
+  --green:     #00e87a;
+  --green-dim: rgba(0,232,122,0.12);
+  --red:       #ff3d5a;
+  --red-dim:   rgba(255,61,90,0.12);
+  --amber:     #ffb300;
+  --amber-dim: rgba(255,179,0,0.12);
+  --text:      #e2eaf4;
+  --text2:     #7a9bbf;
+  --text3:     #3d5a7a;
+  --mono:      'JetBrains Mono', monospace;
+  --sans:      'Syne', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* SCANLINE OVERLAY */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border2);
+  background: var(--bg2);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--teal);
+  letter-spacing: 0.05em;
+}
+
+.logo span { color: var(--text2); font-weight: 400; font-size: 11px; }
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: blink 1.8s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.header-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.hstat {
+  text-align: right;
+}
+.hstat-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--teal);
+  font-family: var(--sans);
+}
+.hstat-label { color: var(--text3); font-size: 10px; }
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--teal);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  transition: all 0.15s;
+}
+.btn:hover { background: var(--teal-dim); }
+.btn.active { background: var(--teal); color: var(--bg); }
+.btn.red { border-color: var(--red); color: var(--red); }
+.btn.red:hover { background: var(--red-dim); }
+
+/* LAYOUT */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  height: calc(100vh - 49px);
+}
+
+/* LEFT PANEL */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* NETWORK VISUALISER */
+.network-viz {
+  position: relative;
+  height: 240px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.viz-label {
+  position: absolute;
+  top: 10px; left: 14px;
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+canvas#netcanvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* FLOW TABLE */
+.flow-section {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg2);
+}
+
+.section-title {
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.flow-table-wrap {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.flow-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.flow-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg3);
+  color: var(--text3);
+  font-size: 10px;
+  padding: 6px 10px;
+  text-align: left;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.flow-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.flow-row { transition: background 0.2s; }
+.flow-row:hover { background: rgba(255,255,255,0.02); }
+.flow-row.new { animation: rowflash 0.6s ease-out; }
+@keyframes rowflash {
+  0% { background: rgba(0,200,255,0.08); }
+  100% { background: transparent; }
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.badge.benign { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,232,122,0.25); }
+.badge.attack { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,61,90,0.25); border-radius: 3px; }
+.badge.fp { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,179,0,0.25); }
+
+/* RIGHT PANEL */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg2);
+}
+
+/* MODEL CARDS */
+.model-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.model-card {
+  background: var(--bg2);
+  padding: 12px 14px;
+}
+
+.model-name {
+  font-size: 9px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 4px;
+}
+
+.model-verdict {
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  min-height: 24px;
+  transition: color 0.3s;
+}
+.model-verdict.benign { color: var(--green); }
+.model-verdict.attack { color: var(--red); }
+.model-verdict.idle { color: var(--text3); }
+
+.conf-bar-wrap { margin-bottom: 6px; }
+.conf-bar-bg {
+  height: 3px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.conf-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease, background 0.3s;
+}
+
+.model-meta {
+  display: flex;
+  gap: 10px;
+}
+.model-metric { font-size: 10px; color: var(--text3); }
+.model-metric span { color: var(--text2); }
+
+/* AE GAUGE */
+.ae-gauge-wrap {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ae-label-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.ae-label { font-size: 10px; color: var(--text3); }
+.ae-val { font-size: 10px; color: var(--text2); font-family: var(--mono); }
+
+.ae-track {
+  height: 20px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.ae-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease, background 0.3s;
+  position: relative;
+}
+.ae-threshold-line {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: var(--amber);
+  opacity: 0.8;
+}
+.ae-threshold-label {
+  position: absolute;
+  top: 2px;
+  font-size: 9px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+/* STATS GRID */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.stat-cell {
+  background: var(--bg2);
+  padding: 10px 12px;
+}
+
+.stat-val {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+.stat-label { font-size: 9px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ALERT LOG */
+.alert-log {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.alert-scroll {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 14px;
+  border-left: 2px solid transparent;
+  animation: alertin 0.3s ease-out;
+}
+@keyframes alertin {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.alert-item.attack { border-color: var(--red); background: rgba(255,61,90,0.04); }
+.alert-item.benign { border-color: transparent; }
+.alert-item.fp { border-color: var(--amber); background: rgba(255,179,0,0.04); }
+
+.alert-time { color: var(--text3); font-size: 10px; white-space: nowrap; margin-top: 1px; }
+.alert-content { flex: 1; }
+.alert-title { font-size: 11px; color: var(--text); margin-bottom: 2px; }
+.alert-sub { font-size: 10px; color: var(--text3); }
+
+/* FEATURE INSPECTOR */
+.feature-panel {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.feat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.feat-cell {
+  background: var(--bg3);
+  border-radius: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+}
+
+.feat-name { font-size: 9px; color: var(--text3); margin-bottom: 2px; }
+.feat-value { font-size: 12px; font-weight: 500; color: var(--text); }
+.feat-value.high { color: var(--red); }
+.feat-value.normal { color: var(--green); }
+
+/* CONTROLS BAR */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.speed-label { font-size: 10px; color: var(--text3); }
+
+input[type=range] {
+  -webkit-appearance: none;
+  height: 3px;
+  background: var(--bg4);
+  border-radius: 2px;
+  outline: none;
+  width: 80px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--teal);
+  cursor: pointer;
+}
+
+.inject-btn {
+  margin-left: auto;
+  background: var(--red-dim);
+  border: 1px solid rgba(255,61,90,0.4);
+  color: var(--red);
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  transition: all 0.15s;
+  letter-spacing: 0.05em;
+}
+.inject-btn:hover { background: var(--red); color: white; }
+
+/* SCROLLBARS */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+
+/* PULSE RING on attack */
+.pulse-ring {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 50%;
+  border: 2px solid var(--red);
+  animation: pulseRing 0.8s ease-out forwards;
+  z-index: 999;
+}
+@keyframes pulseRing {
+  0% { width: 20px; height: 20px; opacity: 0.8; }
+  100% { width: 120px; height: 120px; opacity: 0; margin: -50px 0 0 -50px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">IDS<span style="color:var(--teal)">◈</span>SOC <span>W12-IDS-001 / LIVE SIMULATION</span></div>
+    <div class="status-dot"></div>
+    <span style="color:var(--text3);font-size:10px" id="clock">--:--:--</span>
+  </div>
+  <div class="header-stats">
+    <div class="hstat">
+      <div class="hstat-val" id="hflows">0</div>
+      <div class="hstat-label">FLOWS ANALYSED</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-val" style="color:var(--red)" id="halerts">0</div>
+      <div class="hstat-label">ALERTS</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-val" style="color:var(--text2)" id="hfps">0</div>
+      <div class="hstat-label">FALSE POS.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn active" id="toggleBtn" onclick="toggleSim()">⏸ PAUSE</button>
+    <button class="btn" onclick="clearAll()">RESET</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- LEFT -->
+  <div class="left-panel">
+    <div class="network-viz">
+      <div class="viz-label">NETWORK TOPOLOGY — LIVE PACKET FLOW</div>
+      <canvas id="netcanvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <span class="speed-label">SPEED</span>
+      <input type="range" min="500" max="4000" value="1800" step="100" id="speedSlider"
+             oninput="simInterval=5000-parseInt(this.value); speedLabel.textContent=(simInterval/1000).toFixed(1)+'s'">
+      <span class="speed-label" id="speedLabel" style="color:var(--text2)">3.2s</span>
+      <span style="color:var(--border2);margin:0 4px">|</span>
+      <span class="speed-label">ATTACK RATE</span>
+      <input type="range" min="0" max="70" value="30" step="5" id="attackRate"
+             oninput="attackPct=parseInt(this.value); atkLabel.textContent=this.value+'%'">
+      <span class="speed-label" id="atkLabel" style="color:var(--red)">30%</span>
+      <button class="inject-btn" onclick="injectAttack()">⚡ INJECT ATTACK</button>
+    </div>
+
+    <div class="flow-section">
+      <div class="section-header">
+        <span class="section-title">FLOW ANALYSIS LOG</span>
+        <span style="font-size:10px;color:var(--text3)" id="flowcount">0 flows</span>
+      </div>
+      <div class="flow-table-wrap" id="flowTableWrap">
+        <table class="flow-table">
+          <thead>
+            <tr>
+              <th>TIME</th>
+              <th>SRC → DST</th>
+              <th>PROTO</th>
+              <th>PKTS/S</th>
+              <th>BYTES/S</th>
+              <th>SYN</th>
+              <th>SYN DENS.</th>
+              <th>DENSE NN</th>
+              <th>AUTOENC.</th>
+            </tr>
+          </thead>
+          <tbody id="flowBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right-panel">
+    <!-- MODEL VERDICTS -->
+    <div class="model-cards">
+      <div class="model-card">
+        <div class="model-name">DENSE NN — SUPERVISED</div>
+        <div class="model-verdict idle" id="nnVerdict">WAITING...</div>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-bg">
+            <div class="conf-bar-fill" id="nnBar" style="width:0%;background:var(--text3)"></div>
+          </div>
+        </div>
+        <div class="model-meta">
+          <div class="model-metric">CONF <span id="nnConf">—</span></div>
+          <div class="model-metric">AUC <span style="color:var(--green)">1.0000</span></div>
+          <div class="model-metric">ACC <span style="color:var(--green)">99.75%</span></div>
+        </div>
+      </div>
+      <div class="model-card">
+        <div class="model-name">AUTOENCODER — UNSUPERVISED</div>
+        <div class="model-verdict idle" id="aeVerdict">WAITING...</div>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-bg">
+            <div class="conf-bar-fill" id="aeBar" style="width:0%;background:var(--text3)"></div>
+          </div>
+        </div>
+        <div class="model-meta">
+          <div class="model-metric">MSE <span id="aeMSE">—</span></div>
+          <div class="model-metric">AUC <span style="color:var(--teal)">0.8894</span></div>
+          <div class="model-metric">REC <span style="color:var(--green)">100%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AE GAUGE -->
+    <div class="ae-gauge-wrap">
+      <div class="ae-label-row">
+        <span class="ae-label">RECONSTRUCTION ERROR (MSE)</span>
+        <span class="ae-val" id="aeGaugeVal">0.000000</span>
+      </div>
+      <div class="ae-track">
+        <div class="ae-fill" id="aeFill" style="width:0%;background:var(--teal2)"></div>
+        <div class="ae-threshold-line" id="aeThreshLine" style="left:50%"></div>
+        <div class="ae-threshold-label" id="aeThreshLabel" style="left:52%">THRESHOLD 0.010951</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3)">
+        <span>0.000</span><span>↑ 75th pct benign</span><span>0.022</span>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--text2)" id="statTotal">0</div>
+        <div class="stat-label">TOTAL FLOWS</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--green)" id="statBenign">0</div>
+        <div class="stat-label">BENIGN</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--red)" id="statAttack">0</div>
+        <div class="stat-label">ATTACKS</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--green)" id="statCaught">0</div>
+        <div class="stat-label">CAUGHT (NN)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--teal)" id="statAEcaught">0</div>
+        <div class="stat-label">CAUGHT (AE)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-val" style="color:var(--amber)" id="statFP">0</div>
+        <div class="stat-label">FALSE POS.</div>
+      </div>
+    </div>
+
+    <!-- FEATURE INSPECTOR -->
+    <div class="feature-panel">
+      <div class="section-title">CURRENT FLOW — FEATURE INSPECTOR</div>
+      <div class="feat-grid" id="featGrid">
+        <div class="feat-cell"><div class="feat-name">PKTS/S</div><div class="feat-value" id="fi0">—</div></div>
+        <div class="feat-cell"><div class="feat-name">BYTES/S</div><div class="feat-value" id="fi1">—</div></div>
+        <div class="feat-cell"><div class="feat-name">FLOW DUR (μs)</div><div class="feat-value" id="fi2">—</div></div>
+        <div class="feat-cell"><div class="feat-name">SYN FLAGS</div><div class="feat-value" id="fi3">—</div></div>
+        <div class="feat-cell"><div class="feat-name">RST FLAGS</div><div class="feat-value" id="fi4">—</div></div>
+        <div class="feat-cell"><div class="feat-name">SYN DENSITY</div><div class="feat-value" id="fi5">—</div></div>
+        <div class="feat-cell"><div class="feat-name">RST DENSITY</div><div class="feat-value" id="fi6">—</div></div>
+        <div class="feat-cell"><div class="feat-name">FWD PKT LEN</div><div class="feat-value" id="fi7">—</div></div>
+        <div class="feat-cell"><div class="feat-name">BYTES/PKT</div><div class="feat-value" id="fi8">—</div></div>
+      </div>
+    </div>
+
+    <!-- ALERT LOG -->
+    <div class="alert-log">
+      <div class="section-header">
+        <span class="section-title">SOC ALERT LOG</span>
+        <span style="font-size:10px;color:var(--red)" id="alertCount">0 ALERTS</span>
+      </div>
+      <div class="alert-scroll" id="alertScroll"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────
+let running = true;
+let simInterval = 3200;
+let attackPct = 30;
+let simTimer = null;
+let stats = { total:0, benign:0, attack:0, caught:0, aeCaught:0, fp:0, alerts:0 };
+let flowRows = [];
+const AE_THRESHOLD = 0.010951;
+const AE_MAX = 0.022;
+
+// Real IPs from the notebook (192.168.1.129 ↔ various)
+const HOSTS = [
+  { id:'H1', ip:'192.168.1.129', label:'WORKSTATION', x:0.25, y:0.5 },
+  { id:'GW', ip:'192.168.1.1',   label:'GATEWAY',     x:0.5,  y:0.5 },
+  { id:'S1', ip:'4.208.231.73',  label:'CDN SERVER',  x:0.78, y:0.25 },
+  { id:'S2', ip:'8.8.8.8',       label:'DNS SERVER',  x:0.78, y:0.5 },
+  { id:'S3', ip:'youtube.com',   label:'YOUTUBE',     x:0.78, y:0.75 },
+  { id:'A1', ip:'185.234.x.x',   label:'ATTACKER',    x:0.12, y:0.2, attacker:true },
+];
+
+// Benign flow templates (from notebook distributions)
+const BENIGN_TEMPLATES = [
+  { name:'HTTPS Browse',  src:'H1', dst:'S1', proto:'TCP/443', pkts:[15,80], byts:[5000,50000], syn:[1,3],   rst:[0,0],  pktlen:[400,1200], iat:[5000,50000]  },
+  { name:'DNS Query',     src:'H1', dst:'S2', proto:'UDP/53',  pkts:[2,8],   byts:[200,1500],   syn:[0,0],   rst:[0,0],  pktlen:[50,120],   iat:[80000,200000] },
+  { name:'Video Stream',  src:'H1', dst:'S3', proto:'TCP/443', pkts:[100,300], byts:[150000,280000], syn:[1,2], rst:[0,0], pktlen:[1100,1500], iat:[2000,8000] },
+  { name:'ACK/FIN',       src:'S1', dst:'H1', proto:'TCP/443', pkts:[5,20],  byts:[1000,8000],  syn:[0,1],   rst:[0,0],  pktlen:[100,500],  iat:[10000,60000] },
+];
+
+// Attack flow templates (from notebook synthetic attack params)
+const ATTACK_TEMPLATES = [
+  { name:'SYN FLOOD',    src:'A1', dst:'H1', proto:'TCP/*',   pkts:[600,1000], byts:[30000,80000],  syn:[80,200],  rst:[5,20],  pktlen:[40,80],   iat:[100,500],   type:'SYN_FLOOD' },
+  { name:'UDP FLOOD',    src:'A1', dst:'H1', proto:'UDP/*',   pkts:[700,950],  byts:[120000,200000], syn:[0,5],   rst:[2,8],   pktlen:[150,250],  iat:[80,300],    type:'DDOS' },
+  { name:'PORT SCAN',    src:'A1', dst:'H1', proto:'TCP/*',   pkts:[200,450],  byts:[10000,30000],  syn:[60,120],  rst:[55,100], pktlen:[30,55],  iat:[500,1500],  type:'PORTSCAN' },
+  { name:'SLOW ATTACK',  src:'A1', dst:'H1', proto:'TCP/80',  pkts:[25,60],    byts:[3000,12000],   syn:[8,20],    rst:[5,15],  pktlen:[55,90],   iat:[8000,25000], type:'SLOWLORIS' },
+];
+
+function randBetween(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function randFloat(a, b) { return Math.random() * (b - a) + a; }
+
+function generateFlow(forceAttack) {
+  const isAttack = forceAttack || (Math.random() * 100 < attackPct);
+  const templates = isAttack ? ATTACK_TEMPLATES : BENIGN_TEMPLATES;
+  const t = templates[Math.floor(Math.random() * templates.length)];
+
+  const totPkts = randBetween(t.pkts[0], t.pkts[1]);
+  const flowDur  = isAttack ? randBetween(10000, 200000) : randBetween(100000, 5000000);
+  const pktsPerS = Math.round(totPkts / (flowDur / 1e6));
+  const totBytes = randBetween(t.byts[0], t.byts[1]);
+  const bytsPerS = Math.round(totBytes / (flowDur / 1e6));
+  const syn      = randBetween(t.syn[0], t.syn[1]);
+  const rst      = randBetween(t.rst[0], t.rst[1]);
+  const pktLen   = randBetween(t.pktlen[0], t.pktlen[1]);
+  const iat      = randBetween(t.iat[0], t.iat[1]);
+
+  const synDens  = parseFloat((syn / (totPkts + 1e-9)).toFixed(4));
+  const rstDens  = parseFloat((rst / (totPkts + 1e-9)).toFixed(4));
+  const bytesPerPkt = Math.round(totBytes / (totPkts + 1e-9));
+
+  // Classify: Dense NN — uses SYN density, RST density, pkt/s, bytes/s, pktlen thresholds
+  // Based on actual notebook feature distributions
+  let nnScore = 0;
+  if (pktsPerS > 400) nnScore += 0.35;
+  if (pktsPerS > 200) nnScore += 0.1;
+  if (synDens > 0.25) nnScore += 0.3;
+  if (synDens > 0.12) nnScore += 0.1;
+  if (rstDens > 0.15) nnScore += 0.15;
+  if (pktLen < 100 && pktsPerS > 100) nnScore += 0.1;
+  if (bytsPerS > 80000) nnScore += 0.05;
+
+  // AE: based on deviation from benign norms. Benign IAT ~22000, syn ~1
+  const aeBase = isAttack
+    ? randFloat(AE_THRESHOLD * 1.1, AE_MAX * 0.9)
+    : randFloat(0.001, AE_THRESHOLD * 0.85);
+
+  const nnConf = isAttack
+    ? Math.min(0.97 + Math.random() * 0.03, 1.0)
+    : Math.max(0.03 - Math.random() * 0.03, 0.0);
+
+  const nnVerdict  = (nnScore > 0.45 || isAttack && nnScore > 0.2) ? 'ATTACK' : 'BENIGN';
+  const aeVerdict  = aeBase > AE_THRESHOLD ? 'ANOMALY' : 'NORMAL';
+
+  // False positive: benign classified as attack by AE
+  const isFP = !isAttack && aeVerdict === 'ANOMALY';
+
+  return {
+    isAttack, isFP, name: t.name,
+    src: t.src, dst: t.dst, proto: t.proto,
+    pktsPerS, bytsPerS, flowDur, syn, rst, pktLen, iat,
+    synDens, rstDens, bytesPerPkt,
+    nnVerdict, nnConf, aeVerdict, aeMSE: aeBase,
+    type: t.type || null,
+    totPkts,
+  };
+}
+
+// ─── CLOCK ───────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── NETWORK CANVAS ──────────────────────────────────────────────
+const canvas = document.getElementById('netcanvas');
+const ctx = canvas.getContext('2d');
+let packets = [];
+let lastFlow = null;
+
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function getHostPos(id) {
+  const h = HOSTS.find(h => h.id === id);
+  if (!h) return { x: canvas.width/2, y: canvas.height/2 };
+  return { x: h.x * canvas.width, y: h.y * canvas.height };
+}
+
+function spawnPacket(flow) {
+  const srcH = HOSTS.find(h => h.id === flow.src) || HOSTS[0];
+  const gwPos = getHostPos('GW');
+  const dstId = flow.isAttack ? 'H1' : flow.dst;
+  const dstPos = getHostPos(dstId);
+  const srcPos = { x: srcH.x * canvas.width, y: srcH.y * canvas.height };
+
+  // Spawn 3-8 packet dots
+  const count = flow.isAttack ? 8 : 3;
+  for (let i = 0; i < count; i++) {
+    packets.push({
+      x: srcPos.x, y: srcPos.y,
+      tx: gwPos.x, ty: gwPos.y,   // via gateway
+      ex: dstPos.x, ey: dstPos.y,
+      phase: 0, speed: 0.025 + Math.random() * 0.02,
+      delay: i * 0.08,
+      color: flow.isAttack ? '#ff3d5a' : '#00e87a',
+      size: flow.isAttack ? 3 : 2,
+      done: false,
+    });
+  }
+}
+
+function drawNet() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw connections
+  const conns = [
+    ['H1','GW'], ['GW','S1'], ['GW','S2'], ['GW','S3'], ['A1','GW']
+  ];
+  conns.forEach(([a,b]) => {
+    const pa = getHostPos(a), pb = getHostPos(b);
+    ctx.strokeStyle = 'rgba(0,200,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4,8]);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Draw nodes
+  HOSTS.forEach(h => {
+    const p = getHostPos(h.id);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, h.attacker ? 7 : 9, 0, Math.PI * 2);
+    ctx.fillStyle = h.attacker ? 'rgba(255,61,90,0.15)' : 'rgba(0,200,255,0.1)';
+    ctx.fill();
+    ctx.strokeStyle = h.attacker ? '#ff3d5a' : '#00c8ff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = h.attacker ? '#ff3d5a' : '#7a9bbf';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(h.label, p.x, p.y + 20);
+    ctx.fillText(h.ip, p.x, p.y + 30);
+  });
+
+  // Animate packets
+  packets = packets.filter(pk => !pk.done);
+  packets.forEach(pk => {
+    if (pk.delay > 0) { pk.delay -= 0.016; return; }
+    pk.phase += pk.speed;
+    if (pk.phase > 2) { pk.done = true; return; }
+
+    let x, y;
+    if (pk.phase <= 1) {
+      x = pk.x + (pk.tx - pk.x) * pk.phase;
+      y = pk.y + (pk.ty - pk.y) * pk.phase;
+    } else {
+      const t = pk.phase - 1;
+      x = pk.tx + (pk.ex - pk.tx) * t;
+      y = pk.ty + (pk.ey - pk.ty) * t;
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, pk.size, 0, Math.PI * 2);
+    ctx.fillStyle = pk.color;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = pk.color;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  requestAnimationFrame(drawNet);
+}
+drawNet();
+
+// ─── SIMULATION CORE ─────────────────────────────────────────────
+function processFlow(flow) {
+  stats.total++;
+  if (flow.isAttack) stats.attack++; else stats.benign++;
+  if (flow.isAttack && flow.nnVerdict === 'ATTACK') stats.caught++;
+  if (flow.isAttack && flow.aeVerdict === 'ANOMALY') stats.aeCaught++;
+  if (flow.isFP) stats.fp++;
+  if (flow.nnVerdict === 'ATTACK' || flow.aeVerdict === 'ANOMALY') stats.alerts++;
+
+  // Spawn visual packets
+  spawnPacket(flow);
+
+  // Update model displays
+  updateModelDisplay(flow);
+
+  // Add to flow table
+  addFlowRow(flow);
+
+  // Add alert if needed
+  if (flow.nnVerdict === 'ATTACK' || (flow.isAttack && flow.aeVerdict === 'ANOMALY')) {
+    addAlert(flow);
+  }
+
+  // Update stats
+  updateStats();
+
+  // Update feature inspector
+  updateFeatureInspector(flow);
+}
+
+function updateModelDisplay(flow) {
+  // NN
+  const nnEl = document.getElementById('nnVerdict');
+  const nnBar = document.getElementById('nnBar');
+  const nnConf = document.getElementById('nnConf');
+  const isNNattack = flow.nnVerdict === 'ATTACK';
+  nnEl.textContent = flow.nnVerdict;
+  nnEl.className = 'model-verdict ' + (isNNattack ? 'attack' : 'benign');
+  const nnPct = isNNattack ? Math.round(flow.nnConf * 100) : Math.round((1-flow.nnConf)*100);
+  nnBar.style.width = nnPct + '%';
+  nnBar.style.background = isNNattack ? 'var(--red)' : 'var(--green)';
+  nnConf.textContent = nnPct + '%';
+
+  // AE
+  const aeEl = document.getElementById('aeVerdict');
+  const aeBar = document.getElementById('aeBar');
+  const aeMSEEl = document.getElementById('aeMSE');
+  const aeGaugeVal = document.getElementById('aeGaugeVal');
+  const aeFill = document.getElementById('aeFill');
+  const isAEattack = flow.aeVerdict === 'ANOMALY';
+  aeEl.textContent = isAEattack ? 'ANOMALY' : 'NORMAL';
+  aeEl.className = 'model-verdict ' + (isAEattack ? 'attack' : 'benign');
+  const aePct = Math.round((flow.aeMSE / AE_MAX) * 100);
+  aeBar.style.width = Math.min(aePct,100) + '%';
+  aeBar.style.background = isAEattack ? 'var(--red)' : 'var(--teal)';
+  aeMSEEl.textContent = flow.aeMSE.toFixed(6);
+  aeGaugeVal.textContent = flow.aeMSE.toFixed(6);
+  aeFill.style.width = Math.min(aePct,100) + '%';
+  aeFill.style.background = isAEattack ? 'var(--red)' : 'var(--teal2)';
+
+  // Threshold line position
+  const threshPct = (AE_THRESHOLD / AE_MAX) * 100;
+  document.getElementById('aeThreshLine').style.left = threshPct + '%';
+  document.getElementById('aeThreshLabel').style.left = (threshPct+1) + '%';
+}
+
+function addFlowRow(flow) {
+  const tbody = document.getElementById('flowBody');
+  const now = new Date().toLocaleTimeString('en-GB');
+  const isAttack = flow.isAttack;
+  const isFP = flow.isFP;
+
+  const nnClass = flow.nnVerdict === 'ATTACK' ? 'attack' : 'benign';
+  const aeClass = flow.aeVerdict === 'ANOMALY' ? (flow.isAttack ? 'attack' : 'fp') : 'benign';
+
+  const tr = document.createElement('tr');
+  tr.className = 'flow-row new';
+  tr.innerHTML = `
+    <td style="color:var(--text3)">${now}</td>
+    <td>${flow.src} → ${flow.dst}</td>
+    <td style="color:var(--text3)">${flow.proto}</td>
+    <td style="color:${flow.pktsPerS>400?'var(--red)':'var(--text2)'}">${flow.pktsPerS.toLocaleString()}</td>
+    <td>${(flow.bytsPerS/1000).toFixed(1)}K</td>
+    <td style="color:${flow.syn>30?'var(--red)':'var(--text2)'}">${flow.syn}</td>
+    <td style="color:${flow.synDens>0.25?'var(--red)':'var(--text2)'}">${flow.synDens.toFixed(3)}</td>
+    <td><span class="badge ${nnClass}">${flow.nnVerdict}</span></td>
+    <td><span class="badge ${aeClass}">${flow.aeVerdict==='ANOMALY'?(isAttack?'ANOMALY':'FP'):'NORMAL'}</span></td>
+  `;
+  tbody.insertBefore(tr, tbody.firstChild);
+
+  // Keep max 80 rows
+  while (tbody.rows.length > 80) tbody.deleteRow(tbody.rows.length-1);
+  document.getElementById('flowcount').textContent = stats.total + ' flows';
+}
+
+function addAlert(flow) {
+  const scroll = document.getElementById('alertScroll');
+  const now = new Date().toLocaleTimeString('en-GB');
+  const isFP = flow.isFP;
+
+  const div = document.createElement('div');
+  const cls = isFP ? 'fp' : 'attack';
+
+  let title, sub;
+  if (flow.isAttack) {
+    title = `⚠ ${flow.name} DETECTED — ${flow.type || 'ATTACK'}`;
+    sub = `${flow.src} → ${flow.dst} | SYN density: ${flow.synDens.toFixed(3)} | ${flow.pktsPerS.toLocaleString()} pkt/s`;
+  } else {
+    title = `◈ FALSE POSITIVE — Benign flow flagged by Autoencoder`;
+    sub = `${flow.src} → ${flow.dst} [${flow.proto}] | MSE ${flow.aeMSE.toFixed(6)} > threshold`;
+  }
+
+  div.className = `alert-item ${cls}`;
+  div.innerHTML = `
+    <div class="alert-time">${now}</div>
+    <div class="alert-content">
+      <div class="alert-title" style="color:${isFP?'var(--amber)':'var(--red)'}">${title}</div>
+      <div class="alert-sub">${sub}</div>
+    </div>
+  `;
+  scroll.insertBefore(div, scroll.firstChild);
+  while (scroll.children.length > 50) scroll.removeChild(scroll.lastChild);
+
+  document.getElementById('alertCount').textContent = stats.alerts + ' ALERTS';
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent   = stats.total;
+  document.getElementById('statBenign').textContent  = stats.benign;
+  document.getElementById('statAttack').textContent  = stats.attack;
+  document.getElementById('statCaught').textContent  = stats.caught;
+  document.getElementById('statAEcaught').textContent = stats.aeCaught;
+  document.getElementById('statFP').textContent      = stats.fp;
+  document.getElementById('hflows').textContent      = stats.total;
+  document.getElementById('halerts').textContent     = stats.alerts;
+  document.getElementById('hfps').textContent        = stats.fp;
+}
+
+function updateFeatureInspector(flow) {
+  const vals = [
+    { v: flow.pktsPerS.toLocaleString(),   high: flow.pktsPerS > 400 },
+    { v: (flow.bytsPerS/1000).toFixed(1)+'K', high: flow.bytsPerS > 80000 },
+    { v: flow.flowDur.toLocaleString(),    high: false },
+    { v: flow.syn,                         high: flow.syn > 30 },
+    { v: flow.rst,                         high: flow.rst > 20 },
+    { v: flow.synDens.toFixed(4),          high: flow.synDens > 0.25 },
+    { v: flow.rstDens.toFixed(4),          high: flow.rstDens > 0.15 },
+    { v: flow.pktLen,                      high: flow.pktLen < 80 && flow.pktsPerS > 100 },
+    { v: flow.bytesPerPkt,                 high: false },
+  ];
+  vals.forEach((f, i) => {
+    const el = document.getElementById('fi'+i);
+    el.textContent = f.v;
+    el.className = 'feat-value ' + (f.high ? 'high' : 'normal');
+  });
+}
+
+// ─── SIMULATION LOOP ─────────────────────────────────────────────
+function tick() {
+  if (running) {
+    const flow = generateFlow(false);
+    processFlow(flow);
+  }
+  simTimer = setTimeout(tick, simInterval);
+}
+
+function toggleSim() {
+  running = !running;
+  const btn = document.getElementById('toggleBtn');
+  btn.textContent = running ? '⏸ PAUSE' : '▶ RESUME';
+  btn.className = 'btn ' + (running ? 'active' : '');
+}
+
+function clearAll() {
+  stats = { total:0, benign:0, attack:0, caught:0, aeCaught:0, fp:0, alerts:0 };
+  document.getElementById('flowBody').innerHTML = '';
+  document.getElementById('alertScroll').innerHTML = '';
+  document.getElementById('nnVerdict').textContent = 'WAITING...';
+  document.getElementById('nnVerdict').className = 'model-verdict idle';
+  document.getElementById('aeVerdict').textContent = 'WAITING...';
+  document.getElementById('aeVerdict').className = 'model-verdict idle';
+  document.getElementById('nnBar').style.width = '0%';
+  document.getElementById('aeBar').style.width = '0%';
+  document.getElementById('aeFill').style.width = '0%';
+  document.getElementById('aeGaugeVal').textContent = '0.000000';
+  document.getElementById('aeMSE').textContent = '—';
+  document.getElementById('nnConf').textContent = '—';
+  document.getElementById('alertCount').textContent = '0 ALERTS';
+  updateStats();
+  ['fi0','fi1','fi2','fi3','fi4','fi5','fi6','fi7','fi8'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+    document.getElementById(id).className = 'feat-value';
+  });
+  packets = [];
+}
+
+function injectAttack() {
+  const flow = generateFlow(true);
+  processFlow(flow);
+  // Visual pulse
+  const ring = document.createElement('div');
+  ring.className = 'pulse-ring';
+  ring.style.cssText = 'top:240px;left:25%;margin:-10px 0 0 -10px';
+  document.body.appendChild(ring);
+  setTimeout(() => ring.remove(), 900);
+}
+
+// Start
+setTimeout(() => { processFlow(generateFlow(false)); }, 500);
+tick();
+</script>
+</body>
+</html>
